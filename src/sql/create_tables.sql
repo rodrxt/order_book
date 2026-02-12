@@ -1,0 +1,19 @@
+CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY,
+    type TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS clients(
+    id INTEGER PRIMARY KEY,
+    client_name TEXT UNIQUE,
+    email TEXT UNIQUE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS portfolios(
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER,
+    asset_id TEXT,
+    quantity DECIMAL NOT NULL DEFAULT 0,
+    FOREIGN KEY (user_id) REFERENCES clients(id) ON DELETE RESTRICT
+);

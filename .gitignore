@@ -1,2 +1,12 @@
+# Ficheros
 .venv
 
+# Carpetas
+data
+logs
+
+# Otros
+__pycache__/
+*.pyc
+*.pyo
+*.pyd

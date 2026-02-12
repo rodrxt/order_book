@@ -1,0 +1,1 @@
+# Primero: comprobar si borro un cliente que tiene algo en portfolios
