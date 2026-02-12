@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS clients(
 
 CREATE TABLE IF NOT EXISTS portfolios(
     id INTEGER PRIMARY KEY,
-    user_id INTEGER,
+    client_id INTEGER,
     asset_id TEXT,
     quantity DECIMAL NOT NULL DEFAULT 0,
-    FOREIGN KEY (user_id) REFERENCES clients(id) ON DELETE RESTRICT
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE RESTRICT
 );
