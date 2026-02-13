@@ -9,8 +9,8 @@ class Client(BaseModel):
     email: EmailStr 
     created_at: Optional[datetime] = None
 
-class ClientDelete(BaseModel):
-    """Creamos esta clase para borrados de usuarios"""
+class ClientSearch(BaseModel):
+    """Creamos esta clase para búsqueda de usuarios"""
     client_name: Optional[str] = Field(default=None, min_length=3, max_length=50)
     email: Optional[EmailStr] = None
 
@@ -21,6 +21,6 @@ class ClientDelete(BaseModel):
         return self
     
     @property
-    def identifier_string(self):
+    def nickname(self):
         parts = [self.client_name, self.email]
         return " - ".join(p for p in parts if p is not None)

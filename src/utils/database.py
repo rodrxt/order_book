@@ -19,8 +19,7 @@ class DataBaseManager:
         
         os.makedirs(DATA_DIR, exist_ok=True)
 
-        if self._init_db() == -1:
-            return -1
+        self._init_db()
     
     def _get_connection(self):
         """
@@ -36,82 +35,169 @@ class DataBaseManager:
         Utilizo esta función para inicializar las tablas que vamos a usar
         """
         create_tables_sql = SQL_DIR / "create_tables.sql"
-
-        with self._get_connection() as conn: 
-            try:
+        
+        try:
+            with self._get_connection() as conn: 
                 with open(create_tables_sql, 'r') as f:
                     create_orders_query = f.read()
                 conn.executescript(create_orders_query)
                 conn.commit()
 
                 self.logger.info("Tables initialized")
-                return conn
-            
-            except Exception as e:
-                self.logger.error(f"Error while initializing tables: {e}")
-                return -1
+        
+        except Exception as e:
+            self.logger.critical(f"Error while initializing tables: {e}")
+            raise e
 
     def add_new_client(self, client_data):
         """
         Usamos esta función para añadir un cliente a la db
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
+
         try:
-            cursor.execute(
-                "INSERT INTO clients (client_name, email) VALUES (?, ?)",
-                (client_data.client_name, client_data.email)
-            )
-            # guardamos el id del usuario creado
-            client_id = cursor.lastrowid
-            
-            conn.commit()
-            self.logger.info(f"Client {client_id}: {client_data.client_name} created successfully")
-            
-            return client_id
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO clients (client_name, email) VALUES (?, ?)",
+                    (client_data.client_name, client_data.email)
+                )
+                # guardamos el id del usuario creado
+                client_id = cursor.lastrowid
+                
+                conn.commit()
+                self.logger.info(f"Client created: {client_data.client_name} (ID: {client_id})")
+                
+                return client_id
         
         except sqlite3.IntegrityError as e:
-            # Si algo falla, volvemos al estado previo
-            conn.rollback()
-            self.logger.error(f"Integrity error while creating new client: {e}")
-            return -1
+            self.logger.warning(f"Client already exists: {client_data.client_name}")
+            return None
         
-        finally:
-            conn.close()
+        except Exception as e:
+            self.logger.error(f"Database error adding client: {e}")
+            raise Exception(f"Could not add client: {e}")
     
     def delete_client(self, client_data):
         """
         Usamos esta función para borrar un cliente de la db
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
+
         try:
-            cursor.execute(
-                "DELETE FROM clients WHERE client_name = ? OR email = ?",
-                (client_data.client_name, client_data.email)
-            )
-            n_clients_deleted = cursor.rowcount
-            print(n_clients_deleted)
-            conn.commit()
-            if n_clients_deleted == 0:
-                # No se ha borrado ningún usuario
-                self.logger.debug(f"No match with databse. Couldn't remove client")
-            
-            elif n_clients_deleted == 1:
-                self.logger.info(f"User {client_data.identifier_string} deleted.")
-            
-            else:
-                self.logger.error(f"More than one user has been removed with the same credentials")
-                return -1
-            
-            return 1
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "DELETE FROM clients WHERE client_name = ? OR email = ?",
+                    (client_data.client_name, client_data.email)
+                )
+                conn.commit()
+                
+                if cursor.rowcount == 0:
+                    # No se ha borrado ningún usuario
+                    self.logger.info(f"Delete skipped: Client not found ({client_data.client_name})")
+                    return False
+                
+                elif cursor.rowcount == 1:
+                    self.logger.info(f"Client deleted: {client_data.client_name}")
+                    return True
+                
+                else:
+                    # No se deberían borrar nunca más de 1 usuario a la vezm
+                    # dado que la tabla no debería tener duplicados
+                    self.logger.error(f"More than one client has been removed with the same credentials")
+                    return False
         
-        except sqlite3.IntegrityError as e:
-            # Si algo falla, volvemos al estado previo
-            conn.rollback()
-            self.logger.error(f"Integrity error while deleting new client: {e}")
+        except Exception as e:
+            self.logger.error(f"Error deleting client: {e}")
+            raise Exception(e)
+    
+    def get_client_id(self, client_data):
+        """
+        Usamos esta función para obtener el id de un usuario con su nombre o email
+        :param client_data: ClientSearch
+        """
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT id FROM clients WHERE client_name = ? OR email = ?",
+                    (client_data.client_name, client_data.email)
+                )
+                
+                res = cursor.fetchone()
+                if res:
+                    return res[0]
+                
+                # No existe el usuario
+                return None
+            
+        except Exception as e:
+            self.logger.error(f"Error reading client ID: {e}")
+            raise Exception(e)
+        
+
+    def get_client_cash(self, client_data):
+        """
+        Función para obtener el dinero que el cliente mantiene en su cuenta.
+        :param client_data: ClientSearch
+        """
+        try:
+            client_id = self.get_client_id(client_data)
+            if client_id is None:
+                return None
+            
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+
+                cursor.execute(
+                    "SELECT quantity FROM portfolios WHERE client_id = ?",
+                    (client_id,)
+                )
+                res = cursor.fetchone()
+                if res:
+                    return res[0]
+                
+                # Si no existe la fila, pero sí el usuario, consideramos que tiene 0 
+                return 0
+        except Exception as e:
+            self.logger.error(f"Error reading user cash information: {e}")
+            raise Exception(e)
+
+    def update_cash(self, client_data, cash_variation):
+        """
+        Usamos esta función para modificar la cantidad de fondos en la cuenta de
+        un cliente concreto
+
+        :param client_data: ClientSearch
+        :param cash_variation: Número positivo para añadir fondos, negativo para retirar
+        """
+
+        try:
+            client_id = self.get_client_id(client_data)
+            
+            if client_id is None:
+                self.logger.warning(f"Cannot update cash: Client not found ({client_data.client_name})")
+                return False
+            
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+
+                initial_amount = self.get_client_cash(client_data)
+
+                query = """
+                INSERT INTO portfolios (client_id, asset_id, quantity)
+                VALUES (?, ?, ?)
+                ON CONFLICT (client_id, asset_id)
+                DO UPDATE SET quantity = portfolios.quantity + excluded.quantity;
+                """
+                cursor.execute(query, (client_id, 'CASH', cash_variation))
+                affected_row = cursor.rowcount
+
+                if affected_row > 0:
+                    self.logger.info(f"Client: {client_data.nickname}. Portfolio updated. 'CASH': {initial_amount} -> {initial_amount + cash_variation}")
+                    conn.commit()
+
+        except Exception as e:
+            self.logger.error(f"Error updating cash: {e}")
             return -1
-        
-        finally:
-            conn.close()
+
 

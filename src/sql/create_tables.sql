@@ -14,8 +14,9 @@ CREATE TABLE IF NOT EXISTS portfolios(
     id INTEGER PRIMARY KEY,
     client_id INTEGER,
     asset_id TEXT,
-    quantity DECIMAL NOT NULL DEFAULT 0,
-    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE RESTRICT
+    quantity DECIMAL NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE RESTRICT,
+    UNIQUE (client_id, asset_id)
 );
 
 CREATE TRIGGER IF NOT EXISTS clean_empty_cash
