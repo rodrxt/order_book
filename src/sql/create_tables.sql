@@ -17,3 +17,11 @@ CREATE TABLE IF NOT EXISTS portfolios(
     quantity DECIMAL NOT NULL DEFAULT 0,
     FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE RESTRICT
 );
+
+CREATE TRIGGER IF NOT EXISTS clean_empty_cash
+AFTER UPDATE OF quantity ON portfolios
+FOR EACH ROW
+WHEN NEW.asset_id = 'CASH' AND NEW.quantity = 0
+BEGIN
+    DELETE FROM portfolios WHERE id = NEW.id;
+END;
