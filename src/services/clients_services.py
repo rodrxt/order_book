@@ -6,6 +6,10 @@ from src.models.client import Client, ClientSearch
 from src.utils.logger import setup_logger
 
 class ClientServices:
+    """
+    Esta clase gestiona todas las acciones relacionadas con los clientes: creación,
+    borrado, consulta de id, etc.
+    """
     def __init__(self, db_manager):
         self.db = db_manager
         self.logger = setup_logger('clients_services')

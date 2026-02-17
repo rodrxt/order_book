@@ -13,27 +13,26 @@ class PortfolioServices:
         self.client_services = client_service
         self.logger = setup_logger('portfolio_services')
 
-    def _update_cash(self, client_data, cash_variation):
+    def update_asset(self, client_data, asset_variation, asset_id):
         """
-        Usamos esta función para modificar la cantidad de fondos en la cuenta de
-        un cliente concreto. Es protegida porque solo la queremos llamar desde las 
-        funciones concretas de añadir o retirar cash
+        Usamos esta función para modificar la cantidad de un activo en la cuenta de
+        un cliente concreto.
 
         :param client_data: ClientSearch
-        :param cash_variation: Número positivo para añadir fondos, negativo para retirar
+        :param asset_variation: Número positivo para añadir unidades, negativo para retirar
         """
 
         try:
             client_id = self.client_services.get_client_id(client_data)
             
             if client_id is None:
-                self.logger.warning(f"Cannot update cash: Client not found ({client_data.client_name})")
+                self.logger.warning(f"Cannot update {asset_id}: Client not found ({client_data.client_name})")
                 return False
             
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
 
-                initial_amount = self.get_client_cash(client_data)
+                initial_amount = self.get_client_asset_quantity(client_data, asset_id)
 
                 query = """
                 INSERT INTO portfolios (client_id, asset_id, quantity)
@@ -41,15 +40,15 @@ class PortfolioServices:
                 ON CONFLICT (client_id, asset_id)
                 DO UPDATE SET quantity = portfolios.quantity + ?;
                 """
-                cursor.execute(query, (client_id, 'CASH', cash_variation, cash_variation))
+                cursor.execute(query, (client_id, asset_id, asset_variation, asset_variation))
                 affected_row = cursor.rowcount
 
                 if affected_row > 0:
-                    self.logger.info(f"Client: {client_data.nickname}. Portfolio updated. 'CASH': {initial_amount} -> {initial_amount + cash_variation}")
+                    self.logger.info(f"Client: {client_data.nickname}. Portfolio updated. {asset_id}: {initial_amount} -> {initial_amount + asset_variation}")
                     conn.commit()
 
         except Exception as e:
-            self.logger.error(f"Error updating cash: {e}")
+            self.logger.error(f"Error updating {asset_id}: {e}")
             return -1
         
     def add_cash(self, client_name = None, client_email = None, quantity = 0):
@@ -61,7 +60,7 @@ class PortfolioServices:
         """
         try:
             client = ClientSearch(client_name=client_name, email=client_email)
-            self._update_cash(client, quantity)
+            self.update_asset(client, quantity, 'CASH')
         
         except ValidationError as e:
             self.logger.error(f"Validation error: {e.errors()}")
@@ -77,25 +76,39 @@ class PortfolioServices:
         try:
             client = ClientSearch(client_name=client_name, email=client_email)
             
-            current_cash = self.get_client_cash(client)
+            current_cash = self.get_client_asset_quantity(client, 'CASH')
 
             if quantity > current_cash:
                 self.logger.warning(f"Client {client.nickname} tried to withdraw more money than he has")
             else:
                 # Convertimos en negativo para que reste
-                self._update_cash(client, quantity * -1)
+                self.update_asset(client, quantity * -1, 'CASH')
         
         except ValidationError as e:
             self.logger.error(f"Validation error: {e.errors()}")
             raise Exception(e)
     
-    def get_client_cash(self, client_data):
+    def _resolve_client_id(self, client_identifier):
         """
-        Función para obtener el dinero que el cliente mantiene en su cuenta.
+        Método auxiliar que detecta si le pasamos un ID directo (int) o un objeto cliente (ClientSearch)
+        """
+        # si ya es un ID
+        if isinstance(client_identifier, int):
+            return client_identifier
+            
+        return self.client_services.get_client_id(client_identifier)
+    
+    def get_client_asset_quantity(self, client_data, asset_id):
+        """
+        Usamos esta función para obtener la cantidad que un usuario concreto tiene de 
+        un activo concreto
+        
         :param client_data: ClientSearch
+        :param asset_id: str
         """
+
         try:
-            client_id = self.client_services.get_client_id(client_data)
+            client_id = self._resolve_client_id(client_data)
             if client_id is None:
                 return None
             
@@ -103,8 +116,8 @@ class PortfolioServices:
                 cursor = conn.cursor()
 
                 cursor.execute(
-                    "SELECT quantity FROM portfolios WHERE client_id = ? AND asset_id = 'CASH'",
-                    (client_id,)
+                    "SELECT quantity FROM portfolios WHERE client_id = ? AND asset_id = ?",
+                    (client_id, asset_id)
                 )
                 res = cursor.fetchone()
                 if res:
@@ -114,5 +127,53 @@ class PortfolioServices:
                 return 0
             
         except Exception as e:
-            self.logger.error(f"Error reading user cash information: {e}")
+            self.logger.error(f"Error reading user asset information: {e}")
             raise Exception(e)
+        
+    def execute_trade(self, buyer_id, seller_id, ticker, quantity, total_price):
+        """
+        Esta función realiza el intercambio de activos de forma atómica.
+        
+        :param buyer_id: int
+        :param seller_id: int
+        :param ticker: str
+        :param quantity: int
+        :param total_price: int
+        """
+        try:
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # Comprador
+                # Paga dinero (CASH disminuye)
+                cursor.execute("""
+                    INSERT INTO portfolios (client_id, asset_id, quantity) VALUES (?, 'CASH', ?)
+                    ON CONFLICT(client_id, asset_id) DO UPDATE SET quantity = quantity - ?
+                """, (buyer_id, total_price, total_price))
+                
+                # Recibe acciones (ticker aumenta)
+                # Usamos UPSERT por si no tenía esa acción antes
+                cursor.execute("""
+                    INSERT INTO portfolios (client_id, asset_id, quantity) VALUES (?, ?, ?)
+                    ON CONFLICT(client_id, asset_id) DO UPDATE SET quantity = quantity + ?
+                """, (buyer_id, ticker, quantity, quantity))
+
+                # Vendedor
+                # Recibe dinero (CASH aumenta)
+                cursor.execute("""
+                    INSERT INTO portfolios (client_id, asset_id, quantity) VALUES (?, 'CASH', ?)
+                    ON CONFLICT(client_id, asset_id) DO UPDATE SET quantity = quantity + ?
+                """, (seller_id, total_price, total_price))
+                
+                # Entrega acciones (ticker disminuye)
+                cursor.execute("""
+                    UPDATE portfolios SET quantity = quantity - ? 
+                    WHERE client_id = ? AND asset_id = ?
+                """, (quantity, seller_id, ticker))
+
+                conn.commit()
+                self.logger.info(f"Trade executed: {buyer_id} bought {quantity} {ticker} from {seller_id}")
+                
+        except Exception as e:
+            self.logger.error(f"Error executing trade assets: {e}")
+            raise e
