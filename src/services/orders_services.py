@@ -68,36 +68,26 @@ class OrdersServices:
         except Exception as e:
             self.logger.critical(f"Critical error updating orders without match: {e}")
             raise e
-
-    def update_after_match(self, order_id, matched_quantity):
+    
+    def register_trade_execution(self, match_data):
         """
-        Función para actualizar el estado de una órden cuando hay un match
+        Función para insertar en trades y actualizar orders de forma atómica.
         """
         try:
-            with self.db.get_connection() as conn:
-                # Para poder acceder como diccionario
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
+            with self.db.transaction() as tr: 
+                tr.execute("""
+                    INSERT INTO trades (bid_order_id, ask_order_id, ticker, quantity, price)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (match_data['bid_order_id'], match_data['ask_order_id'], 
+                    match_data['ticker'], match_data['quantity'], match_data['price']))
 
-                cursor.execute("SELECT remaining_quantity FROM orders WHERE id = ?", (order_id,))
-                current_qty = cursor.fetchone()['remaining_quantity']
-                
-                new_qty = current_qty - matched_quantity
-                
-                new_status = 'FILLED' if new_qty <= 0 else 'PARTIALLY_FILLED'
-                
-                cursor.execute("""
-                    UPDATE orders 
-                    SET remaining_quantity = ?, status = ? 
-                    WHERE id = ?
-                """, (new_qty, new_status, order_id))
-                
-                conn.commit()
+                for oid in [match_data['bid_order_id'], match_data['ask_order_id']]:
+                    tr.execute("""
+                        UPDATE orders 
+                        SET remaining_quantity = remaining_quantity - ?,
+                            status = CASE WHEN (remaining_quantity - ?) <= 0 THEN 'FILLED' ELSE 'PARTIALLY_FILLED' END
+                        WHERE id = ?
+                    """, (match_data['quantity'], match_data['quantity'], oid))
 
-        except sqlite3.IntegrityError as e:
-            self.logger.error(f"Error updating orders after match: {e}")
-            return None
-        
         except Exception as e:
-            self.logger.critical(f"Critical error updating orders with match: {e}")
             raise e

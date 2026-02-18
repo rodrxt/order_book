@@ -48,65 +48,9 @@ def create_users(clients_services, portfolio_services):
 
     return client_id_1, client_id_2
 
-def place_bid_order(logger, client_2_id, trading_engine):
-    try:
-        logger.info("Placing order...")
-        new_order = Order(
-            client_id=client_2_id,
-            ticker="AAPL",
-            quantity=10,
-            remaining_quantity=10,
-            price=150,
-            order_side=OrderSide.BID,
-            order_type=OrderType.LIMIT,
-            status=OrderStatus.PENDING
-        )
-
-        resultado = trading_engine.place_order(new_order)
-        
-        if resultado:
-            logger.info("Order processed correctly.")
-        else:
-            logger.warning("Order rejected")
-
-    except ValidationError as e:
-        logger.error(f"Validation error: {e}")
-        raise e
-    
-    except Exception as e:
-        logger.error(f"Critical error in the system: {e}")
-        raise e
-    
-def place_ask_order(logger, client_1_id, trading_engine):
-    try:
-        logger.info("Placing order...")
-        new_order = Order(
-            client_id=client_1_id,
-            ticker="AAPL",
-            quantity=5,
-            remaining_quantity=5,
-            order_side=OrderSide.ASK,
-            order_type=OrderType.MARKET,
-            status=OrderStatus.PENDING
-        )
-
-        resultado = trading_engine.place_order(new_order)
-        
-        if resultado:
-            logger.info("Order processed correctly.")
-        else:
-            logger.warning("Order rejected")
-            
-    except ValidationError as e:
-        logger.error(f"Validation error: {e}")
-        raise e
-    
-    except Exception as e:
-        logger.error(f"Critical error in the system: {e}")
-        raise e
 
 def main():
-    logger = setup_logger("MAIN")
+    logger = setup_logger("main")
     db_manager = DataBaseManager()
 
     clients_services = ClientServices(db_manager=db_manager)
@@ -124,19 +68,93 @@ def main():
         clients_service=clients_services,
         portfolio_services=portfolio_services
     )
+    print(f"""
+    Commands:
+    \t- CREATE USER user_name user_email
+    \t- ADD ASSET ticker quantity user_name
+    \t- ORDER order_side order_type ticker quantity user_name price
+    \t- exit
+    """)
+    while True:
+        try:
+            raw_input = input("> ").strip()
+            if not raw_input: continue
+            if raw_input.lower() == 'exit': break
 
-    try:
-        logger.info("Preparing scenario...")
-        
-        client_1_id, client_2_id = create_users(clients_services, portfolio_services)
+            parts = raw_input.split()
+            cmd = parts[0].upper()
 
-        place_bid_order(logger, client_2_id, trading_engine)
+            if cmd == "CREATE" and parts[1].upper() == 'USER':
+                user_name = parts[2]
+                user_email = parts[3]
+                clients_services.add_client(
+                    client_name=user_name, 
+                    client_email=user_email
+                )
 
-        place_ask_order(logger, client_1_id, trading_engine)
-    
-    except Exception as e:
-        logger.error(f"Critical error in the system: {e}")
-        raise e
+            elif cmd == "ADD" and parts[1].upper() == "ASSET":
+                ticker = parts[2].upper()
+                qty = int(parts[3])
+                user_ref = parts[4]
+                    
+                try:
+                    if ticker == "CASH":
+                        portfolio_services.add_cash(client_name=user_ref, quantity=qty)
+                    else:
+                        client = ClientSearch(
+                            client_name=user_ref
+                        )
+                        
+                        portfolio_services.update_asset(client_data=client, asset_variation=qty, asset_id=ticker)
+                    
+                    print('Completed.')
+                except Exception as e:
+                    print(f"Error: {e}")
+
+            elif cmd == "ORDER":
+                side_str = parts[1].upper()
+                type_str = parts[2].upper()
+                ticker = parts[3].upper()
+                qty = int(parts[4])
+                user_name = parts[5]
+                price = float(parts[6]) if len(parts) > 6 else None
+
+                client_search = ClientSearch(
+                    client_name=user_name
+                )
+
+                client_id = clients_services.get_client_id(client_search)
+
+                side = OrderSide.BID if side_str == "BUY" or side_str == "BID" else OrderSide.ASK
+                order_type = OrderType[type_str]
+                print(order_type)
+                new_order = Order(
+                    client_id=client_id,
+                    ticker=ticker,
+                    quantity=qty,
+                    remaining_quantity=qty,
+                    price=price,
+                    order_side=side,
+                    order_type=order_type,
+                    status=OrderStatus.PENDING
+                )
+                
+                if trading_engine.place_order(new_order):
+                    print(f"Order {side_str} of {ticker} sent.")
+                else:
+                    print("Order rejected.")
+            
+            else:
+                print("Invalid command.")
+
+        except IndexError:
+            print("Format error.")
+        except ValidationError as e:
+            print(f"Incorrect order format: {e}")
+        except Exception as e:
+            print(f"Error: {e}")
+            raise e
+
 
 if __name__ == "__main__":
     main()

@@ -1,6 +1,7 @@
 import sqlite3
 import os
 from pathlib import Path
+from contextlib import contextmanager
 
 from src.utils.logger import setup_logger
 from src.models.client import Client
@@ -48,3 +49,16 @@ class DataBaseManager:
         except Exception as e:
             self.logger.critical(f"Error while initializing tables: {e}")
             raise e
+    
+    @contextmanager
+    def transaction(self):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                yield cursor
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise e
+            finally:
+                cursor.close()

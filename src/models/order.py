@@ -32,7 +32,7 @@ class Order(BaseModel):
 
     @model_validator(mode='after')
     def check_price(self):
-        if self.order_type != OrderType.MARKET and self.price is None:
+        if self.order_type not in (OrderType.MARKET,) and self.price is None:
             raise ValueError('There must be a price if the order is not a MARKET order')
         return self
 

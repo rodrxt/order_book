@@ -108,8 +108,7 @@ class TradingEngine:
                 )
 
                 # Ahora actualizamos la base de datos
-                self.orders_services.update_after_match(match['bid_order_id'], qty)
-                self.orders_services.update_after_match(match['ask_order_id'], qty)
+                self.orders_services.register_trade_execution(match)
 
         except Exception as e:
             self.logger.critical(f"Error processing match: {e}")

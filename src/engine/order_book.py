@@ -130,6 +130,39 @@ class OrderBook:
         
         return trades
 
+    def _match_bid_market(self, bid_order):
+        trades = []
+
+        while bid_order.remaining_quantity > 0 and len(self.asks) > 0:
+            best_ask = self.asks[0]
+            traded_quantity = min(best_ask.remaining_quantity, bid_order.remaining_quantity)
+
+            trades.append({
+                'bid_order_id': bid_order.id,
+                'ask_order_id': best_ask.id,
+                'ticker': best_ask.ticker,
+                'price': best_ask.price,
+                'quantity': traded_quantity
+            })
+
+            best_ask.remaining_quantity -= traded_quantity
+            bid_order.remaining_quantity -= traded_quantity
+
+            if best_ask.remaining_quantity == 0:
+                self.asks.pop(0)
+        
+        return trades
+
+    def _match_bid_best(self, bid_order):
+
+        if len(self.asks) == 0:
+            self.save_order(bid_order)
+            return []
+        
+        bid_order.price = self.asks[0].price
+
+        return self._match_bid_limit(bid_order)
+
     def _match_ask(self, ask_order):
         """
         Aquí procesamos las órdenes de venta. Se debe tener en cuenta el tipo de órden
@@ -176,9 +209,43 @@ class OrderBook:
         return trades
 
     def _match_ask_limit(self, ask_order):
-        pass
+        trades = []
+        
+        while ask_order.remaining_quantity > 0 and len(self.bids) > 0 and ask_order.price <= self.bids[0].price:
+            best_bid = self.bids[0]
+
+            traded_quantity = min(best_bid.remaining_quantity, ask_order.remaining_quantity)
+            
+            trades.append(
+                {
+                    'bid_order_id': best_bid.id,
+                    'ask_order_id': ask_order.id,
+                    'ticker': best_bid.ticker,
+                    'price': best_bid.price,
+                    'quantity': traded_quantity
+                }
+            )
+
+            ask_order.remaining_quantity -= traded_quantity
+            best_bid.remaining_quantity -= traded_quantity
+
+            if best_bid.remaining_quantity == 0:
+                self.bids.pop(0)
+        
+        if ask_order.remaining_quantity > 0:
+            self.save_order(ask_order)
+        
+        return trades
 
     def _match_ask_best(self, ask_order):
-        pass
+        trades = []
 
-        
+        if len(self.bids) == 0:
+            # Esto es que no hay ninguna orden y se queda todo en el ask
+            self.save_order(ask_order) 
+            return trades
+
+        ask_order.price = self.bids[0].price
+
+        # Se comporta igual que una orden limite para ese precio
+        return self._match_ask_limit(ask_order)      

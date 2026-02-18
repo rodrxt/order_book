@@ -60,6 +60,7 @@ class PortfolioServices:
         """
         try:
             client = ClientSearch(client_name=client_name, email=client_email)
+            
             self.update_asset(client, quantity, 'CASH')
         
         except ValidationError as e:

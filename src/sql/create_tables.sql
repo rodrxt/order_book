@@ -1,12 +1,12 @@
 CREATE TABLE IF NOT EXISTS clients(
-    id INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     client_name TEXT UNIQUE,
     email TEXT UNIQUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS portfolios(
-    id INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     client_id INTEGER,
     asset_id TEXT,
     quantity DECIMAL NOT NULL DEFAULT 0 CHECK (quantity >= 0),
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS portfolios(
 );
 
 CREATE TABLE IF NOT EXISTS orders (
-    id INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_side TEXT CHECK (order_side IN ('ASK', 'BID')),
     order_type TEXT CHECK (order_type IN ('MARKET', 'LIMIT', 'BEST')),
     quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity > 0),
@@ -26,6 +26,19 @@ CREATE TABLE IF NOT EXISTS orders (
     status TEXT CHECK (status IN ('PENDING', 'FILLED', 'PARTIALLY_FILLED', 'CANCELLED')),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,  
     FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bid_order_id INTEGER NOT NULL,
+    ask_order_id INTEGER NOT NULL,
+    ticker TEXT NOT NULL,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    price DECIMAL NOT NULL CHECK (price > 0.0),
+    executed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (bid_order_id) REFERENCES orders(id),
+    FOREIGN KEY (ask_order_id) REFERENCES orders(id)
 );
 
 CREATE TRIGGER IF NOT EXISTS clean_empty_cash
