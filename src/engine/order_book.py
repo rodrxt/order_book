@@ -67,7 +67,6 @@ class OrderBook:
 
         else:
             # Orden descendente para Bid
-
             for i, existing_order in enumerate(self.bids):
                 if order_object.price > existing_order.price:
                     self.bids.insert(i, order_object)

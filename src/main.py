@@ -12,43 +12,6 @@ from src.engine.processor import TradingEngine
 from src.models.order import Order, OrderSide, OrderType, OrderStatus
 from src.models.client import ClientSearch
 
-def create_users(clients_services, portfolio_services):
-    client_1_name = "Example1"
-    client_1_email = "example@gmail.com"
-    client_2_name = "Example2"
-    client_2_email = "example2@gmail.com"
-
-    client_id_1 = clients_services.add_client(
-        client_name=client_1_name, 
-        client_email=client_1_email
-    )
-    
-    portfolio_services.add_cash(
-        client_email=client_1_email, 
-        quantity=10000
-    )
-
-    client = ClientSearch(
-        client_name = client_1_name
-    )
-
-    portfolio_services.update_asset(
-        client, 100, 'AAPL'
-    )
-
-    client_id_2 = clients_services.add_client(
-        client_name=client_2_name, 
-        client_email=client_2_email
-    )
-    
-    portfolio_services.add_cash(
-        client_email=client_2_email, 
-        quantity=10000
-    )
-
-    return client_id_1, client_id_2
-
-
 def main():
     logger = setup_logger("main")
     db_manager = DataBaseManager()
@@ -107,9 +70,9 @@ def main():
                         
                         portfolio_services.update_asset(client_data=client, asset_variation=qty, asset_id=ticker)
                     
-                    print('Completed.')
+                    logger.info(f'Asset quantity updated: {user_ref} -> ({ticker}, {qty})')
                 except Exception as e:
-                    print(f"Error: {e}")
+                    logger.error(f"Error updating asset quantity: {e}")
 
             elif cmd == "ORDER":
                 side_str = parts[1].upper()
@@ -127,7 +90,7 @@ def main():
 
                 side = OrderSide.BID if side_str == "BUY" or side_str == "BID" else OrderSide.ASK
                 order_type = OrderType[type_str]
-                print(order_type)
+
                 new_order = Order(
                     client_id=client_id,
                     ticker=ticker,
@@ -140,21 +103,19 @@ def main():
                 )
                 
                 if trading_engine.place_order(new_order):
-                    print(f"Order {side_str} of {ticker} sent.")
+                    logger.info(f"Order {side_str} of {ticker} sent.")
                 else:
-                    print("Order rejected.")
+                    logger.warning(f"Order rejected: {new_order}")
             
             else:
-                print("Invalid command.")
+                logger.warning(f"Invalid command: {raw_input}")
 
         except IndexError:
-            print("Format error.")
+            logger.error("Format error.")
         except ValidationError as e:
-            print(f"Incorrect order format: {e}")
+            logger.error(f"Incorrect order format: {e}")
         except Exception as e:
-            print(f"Error: {e}")
-            raise e
-
+            logger.error(f"Error: {e}")
 
 if __name__ == "__main__":
     main()
