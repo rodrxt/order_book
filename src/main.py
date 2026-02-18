@@ -62,15 +62,17 @@ def main():
                     
                 try:
                     if ticker == "CASH":
-                        portfolio_services.add_cash(client_name=user_ref, quantity=qty)
+                        res = portfolio_services.add_cash(client_name=user_ref, quantity=qty)
                     else:
                         client = ClientSearch(
                             client_name=user_ref
                         )
                         
-                        portfolio_services.update_asset(client_data=client, asset_variation=qty, asset_id=ticker)
+                        res = portfolio_services.update_asset(client_data=client, asset_variation=qty, asset_id=ticker)
                     
-                    logger.info(f'Asset quantity updated: {user_ref} -> ({ticker}, {qty})')
+                    if res is not None:
+                        logger.info(f'Asset quantity updated: {user_ref} -> ({ticker}, {qty})')
+                
                 except Exception as e:
                     logger.error(f"Error updating asset quantity: {e}")
 
