@@ -8,7 +8,6 @@ class OrderBook:
         self.asks = []
 
     def get_order_by_id(self, order_id, order_side):
-        
         if order_side == OrderSide.ASK:
             for elem in self.asks:
                 if elem.id == order_id:
@@ -49,13 +48,25 @@ class OrderBook:
         else:
             self.insert_ordered(order_object)
     
+    def remove_order(self, order):
+        target_list = self.asks if order.order_side == OrderSide.ASK else self.bids
+    
+        for i, existing_order in enumerate(target_list):
+            if existing_order.id == order.id:
+
+                target_list.pop(i)
+                return True
+                
+        return False
+
     def insert_ordered(self, order_object):
         inserted = False
-
+        
         if order_object.order_side == OrderSide.ASK:
             # Orden ascendente para Ask
             # Buscamos el primer hueco donde mi precio sea menor que el actual
             for i, existing_order in enumerate(self.asks):
+
                 if order_object.price < existing_order.price:
                     self.asks.insert(i, order_object)
                     inserted = True
@@ -76,26 +87,26 @@ class OrderBook:
             if not inserted:
                 self.bids.append(order_object)
 
-    def match(self, order):
+    def match(self, order, buyer_balance = None):
         matches = []
 
         if order.order_side == OrderSide.ASK:
             matches = self._match_ask(order)
         else:
-            matches = self._match_bid(order)
+            matches = self._match_bid(order, buyer_balance)
             
         return matches
 
-    def _match_bid(self, bid_order):
+    def _match_bid(self, bid_order, buyer_balance = None):
         """
         Aquí procesamos las órdenes de compra. Se debe tener en cuenta el tipo de órden
         
         :param bid_order: Order
         """
         if bid_order.order_type == OrderType.MARKET:
-            return self._match_bid_market(bid_order=bid_order)
+            return self._match_bid_market(bid_order=bid_order, buyer_balance=buyer_balance)
         elif bid_order.order_type == OrderType.BEST:
-            return self._match_bid_best(bid_order=bid_order)
+            return self._match_bid_best(bid_order=bid_order, buyer_balance=buyer_balance)
         elif bid_order.order_type == OrderType.LIMIT:
             return self._match_bid_limit(bid_order=bid_order)
 
@@ -129,36 +140,70 @@ class OrderBook:
         
         return trades
 
-    def _match_bid_market(self, bid_order):
+    def _match_bid_market(self, bid_order, buyer_balance):
+        """
+        Esta función se encarga de encontrar los match para ordenes BID de mercado. En caso 
+        de que el cliente no pueda pagar por la cantidad que pidió, se procesa la compra
+        hasta su límite de saldo
+
+        :param bid_order: Order
+        :param buyer_balance: float
+        """
+
         trades = []
 
         while bid_order.remaining_quantity > 0 and len(self.asks) > 0:
             best_ask = self.asks[0]
-            traded_quantity = min(best_ask.remaining_quantity, bid_order.remaining_quantity)
+            intended_quantity = min(best_ask.remaining_quantity, bid_order.remaining_quantity)
+
+            cost = intended_quantity * best_ask.price
+
+            if buyer_balance < cost:
+                # El cliente no tiene suficiente saldo
+                actual_quantity = int(buyer_balance // best_ask.price)
+
+                if actual_quantity == 0:
+                    break
+            else:
+                actual_quantity = intended_quantity
+
+            actual_cost = actual_quantity * best_ask.price
 
             trades.append({
                 'bid_order_id': bid_order.id,
+                'bid_order_client_id': bid_order.client_id,
                 'ask_order_id': best_ask.id,
+                'ask_order_client_id': best_ask.client_id,
                 'ticker': best_ask.ticker,
                 'price': best_ask.price,
-                'quantity': traded_quantity
+                'quantity': actual_quantity
             })
 
-            best_ask.remaining_quantity -= traded_quantity
-            bid_order.remaining_quantity -= traded_quantity
+            best_ask.remaining_quantity -= actual_quantity
+            bid_order.remaining_quantity -= actual_quantity
+            buyer_balance -= actual_cost
 
             if best_ask.remaining_quantity == 0:
                 self.asks.pop(0)
+
+            if actual_quantity < intended_quantity:
+                # Esto es que el cliente se quedó sin dinero
+                break
         
         return trades
 
-    def _match_bid_best(self, bid_order):
+    def _match_bid_best(self, bid_order, buyer_balance):
 
         if len(self.asks) == 0:
-            self.save_order(bid_order)
+            # Si no hay ordenes en el ask, anulamos la operación
             return []
         
         bid_order.price = self.asks[0].price
+
+        # Ahora determinamos si el usuario puede realizar la compra
+        if bid_order.quantity * bid_order.price > buyer_balance:
+            # No hay saldo suficiente
+            return []
 
         return self._match_bid_limit(bid_order)
 
@@ -192,7 +237,9 @@ class OrderBook:
             trades.append(
                 {
                     'bid_order_id': best_order.id,
+                    'bid_order_client_id': best_order.client_id,
                     'ask_order_id': ask_order.id,
+                    'ask_order_client_id': ask_order.client_id,
                     'ticker': best_order.ticker,
                     'price': best_order.price,
                     'quantity': traded_quantity

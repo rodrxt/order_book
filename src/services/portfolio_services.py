@@ -1,6 +1,7 @@
 from pydantic import ValidationError
 
 from src.models.client import ClientSearch
+from src.models.order import OrderType, OrderStatus
 from src.utils.logger import setup_logger
 
 class PortfolioServices:
@@ -177,4 +178,27 @@ class PortfolioServices:
                 
         except Exception as e:
             self.logger.error(f"Error executing trade assets: {e}")
+            raise e
+    
+    def register_trade_execution(self, match_data):
+        """
+        Función para insertar en trades y actualizar orders de forma atómica.
+        """
+        try:
+            with self.db.transaction() as tr: 
+                tr.execute("""
+                    INSERT INTO trades (bid_order_id, ask_order_id, ticker, quantity, price)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (match_data['bid_order_id'], match_data['ask_order_id'], 
+                    match_data['ticker'], match_data['quantity'], match_data['price']))
+
+                for oid in [match_data['bid_order_id'], match_data['ask_order_id']]:
+                    tr.execute(f"""
+                        UPDATE orders 
+                        SET remaining_quantity = remaining_quantity - ?,
+                            status = CASE WHEN (remaining_quantity - ?) <= 0 THEN '{OrderStatus.FILLED.value}' ELSE status END
+                        WHERE id = ?
+                    """, (match_data['quantity'], match_data['quantity'], oid))
+
+        except Exception as e:
             raise e

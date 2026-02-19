@@ -103,11 +103,13 @@ def main():
                     order_type=order_type,
                     status=OrderStatus.PENDING
                 )
-                
-                if trading_engine.place_order(new_order):
-                    logger.info(f"Order {side_str} of {ticker} sent.")
+
+                matches = trading_engine.place_order(new_order)
+
+                if matches != False:
+                    logger.info(f"Order {side_str} of {ticker} processed.")
                 else:
-                    logger.warning(f"Order rejected: {new_order}")
+                    logger.warning(f"Order not processed: {new_order}")
             
             else:
                 logger.warning(f"Invalid command: {raw_input}")
