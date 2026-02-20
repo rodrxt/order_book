@@ -12,13 +12,14 @@ SQL_DIR = BASE_DIR / "src" / "sql"
 DB_DIR = DATA_DIR / "trading.db"
 
 class DataBaseManager:
-    def __init__(self):
+    def __init__(self, db_path = None):
         self.logger = setup_logger("database")
 
-        if not os.path.exists(DATA_DIR):
-            self.logger.debug("Data folder does not exist yet. Starting creation.")
+        # Para poder configurar entorno de pruebas
+        self.db_path = db_path or DB_DIR
         
-        os.makedirs(DATA_DIR, exist_ok=True)
+        if self.db_path != ":memory:":
+            os.makedirs(DATA_DIR, exist_ok=True)
 
         self._init_db()
     
@@ -26,7 +27,13 @@ class DataBaseManager:
         """
         Usamos un método privado para mayor seguridad. Solo lo podemos desde funciones internas
         """
-        conn = sqlite3.connect(DB_DIR)
+        path = self.db_path
+
+        if path == ":memory:":
+            # Esto permite que múltiples conexiones en el mismo proceso compartan la DB en RAM
+            path = "file::memory:?cache=shared"
+
+        conn = sqlite3.connect(path, uri=(path.startswith("file:")))
         # Usamos esto para habilitar las foreign keys en las tablas
         conn.execute("PRAGMA foreign_keys = ON;")
         return conn
