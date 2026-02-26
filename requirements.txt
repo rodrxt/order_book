@@ -1,2 +1,14 @@
-logging
-pydantic[email]
+annotated-types==0.7.0
+dnspython==2.8.0
+email-validator==2.3.0
+idna==3.11
+iniconfig==2.3.0
+logging==0.4.9.6
+packaging==26.0
+pluggy==1.6.0
+pydantic==2.12.5
+pydantic_core==2.41.5
+Pygments==2.19.2
+pytest==9.0.2
+typing-inspection==0.4.2
+typing_extensions==4.15.0
