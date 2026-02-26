@@ -18,6 +18,11 @@ class DataBaseManager:
         # Para poder configurar entorno de pruebas
         self.db_path = db_path or DB_DIR
         
+        self._connection = None
+        if self.db_path == ":memory:":
+            self._connection = sqlite3.connect(":memory:", check_same_thread=False)
+            self._connection.execute("PRAGMA foreign_keys = ON;")
+
         if self.db_path != ":memory:":
             os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -27,14 +32,10 @@ class DataBaseManager:
         """
         Usamos un método privado para mayor seguridad. Solo lo podemos desde funciones internas
         """
-        path = self.db_path
-
-        if path == ":memory:":
-            # Esto permite que múltiples conexiones en el mismo proceso compartan la DB en RAM
-            path = "file::memory:?cache=shared"
-
-        conn = sqlite3.connect(path, uri=(path.startswith("file:")))
-        # Usamos esto para habilitar las foreign keys en las tablas
+        if self._connection:
+            return self._connection
+        
+        conn = sqlite3.connect(str(self.db_path))
         conn.execute("PRAGMA foreign_keys = ON;")
         return conn
 
@@ -43,15 +44,15 @@ class DataBaseManager:
         Utilizo esta función para inicializar las tablas que vamos a usar
         """
         create_tables_sql = SQL_DIR / "create_tables.sql"
-        
-        try:
-            with self.get_connection() as conn: 
-                with open(create_tables_sql, 'r') as f:
-                    create_orders_query = f.read()
-                conn.executescript(create_orders_query)
-                conn.commit()
 
-                self.logger.info("Tables initialized")
+        try:
+            conn = self.get_connection()
+            with open(create_tables_sql, 'r') as f:
+                create_orders_query = f.read()
+            conn.executescript(create_orders_query)
+            conn.commit()
+
+            self.logger.info("Tables initialized")
         
         except Exception as e:
             self.logger.critical(f"Error while initializing tables: {e}")
